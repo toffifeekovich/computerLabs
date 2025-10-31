@@ -32,7 +32,7 @@ int main()
 {
     double a = 0;
     double b = M_PI;
-    int N = 10e8;
+    int N = 15e7;
 /*
     printf("N = ");
     if (scanf("%d", &N) != 1)
