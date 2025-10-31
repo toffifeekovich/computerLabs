@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <math.h>
-#include <stdlib.h>
-#include <sys/times.h> 
-#include <unistd.h> 
+#include <stdlib.h> 
 
 
 #ifndef M_PI
@@ -42,20 +40,11 @@ int main(int argc, char *arg[])
         return 0;
     }*/
 
-    struct tms start, end;
-
-    long clocks_per_sec = sysconf(_SC_CLK_TCK);
-    long clocks;
 
 
-    times(&start);
     double answer = integral(a, b, N);
-    times(&end);
     
-    clocks = end.tms_utime - start.tms_utime;
-    printf("Time taken: %lf sec.\n", (double)clocks / clocks_per_sec);
-
-    printf("result = %f", answer);
+    //printf("result = %f", answer);
 
 
     return 0;
