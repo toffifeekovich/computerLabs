@@ -44,8 +44,9 @@ int main(int argc, char *arg[])
 
     double answer = integral(a, b, N);
     
-    //printf("result = %f", answer);
+    printf("result = %f", answer);
 
 
     return 0;
 }
+

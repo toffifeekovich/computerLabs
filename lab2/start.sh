@@ -12,12 +12,20 @@ echo "switch;40e7;60e7;80e7;10e8;12e8" > result.csv
 
 for sw in "${switches[@]}"; do
 	echo -n "$sw" >> result.csv
-	echo -n ";" >> result.csv
-	gcc $sw computerlab1.c -o "lab1${sw// /_}.out" -lm 
+	gcc $sw "computerlab1-1.c" -o "lab1${sw// /_}.out" -lm 
 	for n in "${N[@]}";do
-		echo "Запуск c $sw с n=$n"		
-		./"lab1${sw// /_}.out" $n |  awk '{printf "%.2f", $3}' >> result.csv
 		echo -n ";" >> result.csv
+		echo "Запуск c $sw с n=$n"		
+                user_time=$(/usr/bin/time -p ./"lab1${sw// /_}.out" "$n" 2>&1 | grep "user" | awk '{print $2}')
+        
+                if [ -n "$user_time" ]; then
+            		 formatted_time=$(printf "%.1f" "$user_time")
+                else
+              		 formatted_time="ERROR"
+                fi
+
+                echo -n "$formatted_time" >> result.csv
+		echo "  -> $formatted_time секунд"
 	done
 	echo >> result.csv
 done
