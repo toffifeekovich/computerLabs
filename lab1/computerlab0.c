@@ -33,13 +33,6 @@ int main()
     double a = 0;
     double b = M_PI;
     int N = 15e7;
-/*
-    printf("N = ");
-    if (scanf("%d", &N) != 1)
-    {
-        printf("scanf error");
-        return 0;
-    }*/
 
     struct tms start, end;
 
@@ -53,9 +46,6 @@ int main()
     
     clocks = end.tms_utime - start.tms_utime;
     printf("Time taken: %lf sec.\n", (double)clocks / clocks_per_sec);
-
-    //printf("result = %f", answer);
-
 
     return 0;
 }

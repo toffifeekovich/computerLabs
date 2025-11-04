@@ -11,7 +11,7 @@ switches=("-O0" "-O1" "-O2" "-O3" "-Os" "-Ofast" "-Og" "-m64"
 echo "switch;40e7;60e7;80e7;10e8;12e8" > result.csv
 
 for sw in "${switches[@]}"; do
-	echo -n "$sw" >> result.csv
+	echo -n "${sw//-/_}" >> result.csv
 	gcc $sw "computerlab1-1.c" -o "lab1${sw// /_}.out" -lm 
 	for n in "${N[@]}";do
 		echo -n ";" >> result.csv

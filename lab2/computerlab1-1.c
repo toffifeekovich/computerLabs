@@ -32,15 +32,6 @@ int main(int argc, char *arg[])
     double a = 0;
     double b = M_PI;
     int N = atoi(arg[1]);
-/*
-    printf("N = ");
-    if (scanf("%d", &N) != 1)
-    {
-        printf("scanf error");
-        return 0;
-    }*/
-
-
 
     double answer = integral(a, b, N);
     
