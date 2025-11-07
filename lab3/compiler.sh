@@ -7,7 +7,7 @@ switches=("-O0" "-O1" "-O2" "-O3" "-Os" "-Ofast" "-Og" "-m64" \
 )
 
 for sw in "${switches[@]}"; do
-	gcc $sw "computerlab3.c" -o "lab3${sw// /_}.out" -lm 
+	gcc -S $sw "computerlab3.c" -o "lab3${sw// /_}.s" -lm 
 
 done
 echo "ГОТОВО!"
