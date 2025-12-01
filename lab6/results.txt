@@ -1,0 +1,47 @@
+  g++ computerlab6.cpp -o usb_enum -I/usr/include/libusb-1.0 -lusb-1.0
+
+  ./usb_enum
+Найдено устройств: 9
+
+Класс   Vendor  Product   Серийный номер
+-----   ------  -------   ------------------------------
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/004/001, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0x09   0x1d6b  0x0003   <нет доступа к устройству, код -3>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/003/005, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0x00   0x17ef  0xf006   <нет доступа к устройству, код -3>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/003/004, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0x00   0x373b  0x10c9   <нет доступа к устройству, код -3>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/003/003, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0xef   0x04f2  0xb7e8   <нет доступа к устройству, код -3>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/003/002, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0xef   0x27c6  0x659a   <нет доступа к устройству, код -3>
+0xe0   0x8087  0x0033   <серийный номер отсутствует>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/003/001, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0x09   0x1d6b  0x0002   <нет доступа к устройству, код -3>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/002/001, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0x09   0x1d6b  0x0003   <нет доступа к устройству, код -3>
+libusb: error [get_usbfs_fd] libusb couldn't open USB device /dev/bus/usb/001/001, errno=13
+libusb: error [get_usbfs_fd] libusb requires write access to USB device nodes
+0x09   0x1d6b  0x0002   <нет доступа к устройству, код -3>
+  sudo ./usb_enum
+Найдено устройств: 9
+
+Класс   Vendor  Product   Серийный номер
+-----   ------  -------   ------------------------------
+0x09   0x1d6b  0x0003   0000:00:14.0
+0x00   0x17ef  0xf006   0123456789ABCDEF
+0x00   0x373b  0x10c9   ?
+0xef   0x04f2  0xb7e8   0001
+0xef   0x27c6  0x659a   UID0C436AEE_XXXX_MOC_B0
+0xe0   0x8087  0x0033   <серийный номер отсутствует>
+0x09   0x1d6b  0x0002   0000:00:14.0
+0x09   0x1d6b  0x0003   0000:00:0d.0
+0x09   0x1d6b  0x0002   0000:00:0d.0
+  
