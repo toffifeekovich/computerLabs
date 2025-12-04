@@ -1,15 +1,23 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 // g++ computerlab5.cpp -o cam `pkg-config --cflags --libs opencv4`
+
+/*
+g++ computerlab5.cpp -o cam -I/usr/include/opencv4 \
+  -lopencv_core \
+  -lopencv_imgproc \
+  -lopencv_highgui \
+  -lopencv_videoio
+  */
+
 int main() {
     std::cout << "Старт программы\n";
 
     // Попробуем такой конструктор (на Windows иногда помогает CAP_DSHOW)
-    cv::VideoCapture cap(0, cv::CAP_DSHOW);
+    cv::VideoCapture cap(0);
     if (!cap.isOpened()) {
         std::cerr << "Ошибка: не удалось открыть камеру 0\n";
         std::cerr << "Попробуй включить/выключить камеру или сменить индекс (1, 2...)\n";
-        std::cin.get(); // чтобы окно консоли не закрывалось сразу
         return -1;
     }
 
@@ -24,6 +32,11 @@ int main() {
             std::cerr << "Пустой кадр, выходим\n";
             break;
         }
+
+        cv::flip(frame, frame, 1);
+
+        cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
+        cv::threshold(frame, frame, 128, 255, cv::THRESH_BINARY);
 
         cv::imshow("test", frame);
 
