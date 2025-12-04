@@ -1,0 +1,28 @@
+computerlab7-1.cpp  computerlab7-3.cpp  lab7              lab7_sse
+evm133@comrade:~/computerLabs/lab7$ ./a.out 
+Готово (NAIVE)
+Время выполнения (NAIVE): 1006.796631 секунд
+evm133@comrade:~/computerLabs/lab7$ g++ computerlab7-1.cpp -O3
+evm133@comrade:~/computerLabs/lab7$ ./a.out 
+Готово (NAIVE)
+Время выполнения (NAIVE): 780.502364 секунд
+evm133@comrade:~/computerLabs/lab7$ g++ computerlab7-2.cpp -O3 -ffast-math -march=native -msse4.1 -o lab7_sse
+evm133@comrade:~/computerLabs/lab7$ ./lab7_sse
+Готово (SSE)
+Время выполнения (SSE): 197.020160 сек
+evm133@comrade:~/computerLabs/lab7$ g++ computerlab7-3.cpp -O3 -march=native -ffast-math -lopenblas -o lab7_blas
+evm133@comrade:~/computerLabs/lab7$ ./lab7_blass
+-bash: ./lab7_blass: Нет такого файла или каталога
+evm133@comrade:~/computerLabs/lab7$ ./lab7_blas
+Готово (BLAS)
+Время выполнения (BLAS): 2.004989 сек
+evm133@comrade:~/computerLabs/lab7$ ./lab7_blas
+Готово (BLAS)
+Время выполнения (BLAS): 2.034078 сек
+evm133@comrade:~/computerLabs/lab7$ ./lab7_blas
+Готово (BLAS)
+Время выполнения (BLAS): 2.011008 сек
+evm133@comrade:~/computerLabs/lab7$ ./lab7_blas
+Готово (BLAS)
+Время выполнения (BLAS): 1.981690 сек
+evm133@comrade:~/computerLabs/lab7$ 
