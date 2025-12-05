@@ -26,3 +26,7 @@ evm133@comrade:~/computerLabs/lab7$ ./lab7_blas
 Готово (BLAS)
 Время выполнения (BLAS): 1.981690 сек
 evm133@comrade:~/computerLabs/lab7$ 
+evm133@comrade:~/computerLabs/lab7$ ./lab7
+Готово (NAIVE)
+Время выполнения (NAIVE): 776.869599 секунд
+evm133@comrade:~/computerLabs/lab7$ 
