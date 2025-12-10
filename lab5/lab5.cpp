@@ -1,5 +1,5 @@
 #include <opencv2/opencv.hpp>
-#include <iostream>
+#include <cstdio>
 
 /*
 g++ computerlab5.cpp -o cam -I/usr/include/opencv4 \
@@ -7,78 +7,115 @@ g++ computerlab5.cpp -o cam -I/usr/include/opencv4 \
   -lopencv_imgproc \
   -lopencv_highgui \
   -lopencv_videoio
-  */
+*/
 
 int main() {
-    std::cout << "Старт программы\n";
+    printf("Старт программы\n");
 
     cv::VideoCapture cap(0);
     if (!cap.isOpened()) {
-        std::cerr << "Ошибка: не удалось открыть камеру 0\n";
+        fprintf(stderr, "Ошибка: не удалось открыть камеру 0\n");
         return -1;
     }
 
-    std::cout << "Камера успешно открыта\n";
+    printf("Камера успешно открыта\n");
 
     cv::Mat frame;
     cv::namedWindow("test", cv::WINDOW_AUTOSIZE);
 
-    // ==== ИЗМЕРЕНИЯ ====
-    double freq = cv::getTickFrequency();  // тиков в секунду в моем процессоре
-    int64_t ticks_start = cv::getTickCount(); // число тиков процессора в момент старта программы
-    double processing_time_sum = 0.0; // суммарное время обработки (в секундах)
-    long long frame_count = 0;        // количество кадров
+    // ИЗМЕРЕНИЯ
+    double freq = cv::getTickFrequency();  // тиков в секунду
+    int64_t ticks_start = cv::getTickCount();
+
+    double all_processing_time_sum = 0.0;
+    double processing_time_sum     = 0.0;
+    double reading_time_sum        = 0.0;
+    double writing_time_sum        = 0.0;
+    long long frame_count          = 0;
 
     while (true) {
-        // ---- начало измерения времени обработки кадра ----
         int64_t t0 = cv::getTickCount();
 
         cap >> frame;
+        int64_t t1 = cv::getTickCount();
+
         if (frame.empty()) {
-            std::cerr << "Пустой кадр, выходим\n";
+            fprintf(stderr, "Пустой кадр, выходим\n");
             break;
         }
 
-        // преобразования
+        int64_t t2 = cv::getTickCount();
+
+        // ОБРАБОТКА
         cv::flip(frame, frame, 1);
         cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
         cv::threshold(frame, frame, 128, 255, cv::THRESH_BINARY);
 
+        int64_t t3 = cv::getTickCount();
+
+        // ВЫВОД
         cv::imshow("test", frame);
 
-        // ---- конец измерения обработки ----
-        int64_t t1 = cv::getTickCount();
-        double dt = (t1 - t0) / freq;       // время обработки одного кадра (сек)
-        processing_time_sum += dt;
+        int64_t t4 = cv::getTickCount();
+
+        double dt_read   = (t1 - t0) / freq;   // считывание
+        double dt_prc    = (t3 - t2) / freq;   // обработка
+        double dt_write  = (t4 - t3) / freq;   // вывод
+        double dt_allprc = (t4 - t0) / freq;   // всё вместе (кадр)
+
+        all_processing_time_sum += dt_allprc;
+        processing_time_sum     += dt_prc;
+        reading_time_sum        += dt_read;
+        writing_time_sum        += dt_write;
         frame_count++;
 
-        // Пауза ожидания клавиши — это уже НЕ обработка, а просто задержка
         int key = cv::waitKey(33);
         if (key == 27) { // ESC
-            std::cout << "Нажат ESC, выходим\n";
+            printf("Нажат ESC, выходим\n");
             break;
         }
     }
 
     int64_t ticks_end = cv::getTickCount();
-    double total_time = (ticks_end - ticks_start) / freq; // всё время работы программы
+    double total_time = (ticks_end - ticks_start) / freq;
 
-    std::cout << "Завершение программы\n";
-    std::cout << "Всего кадров: " << frame_count << "\n";
-    std::cout << "Общее время работы: " << total_time << " сек\n";
-    std::cout << "Суммарное время обработки кадров: " << processing_time_sum << " сек\n";
+    printf("Завершение программы\n");
+    printf("Всего кадров: %lld\n", frame_count);
+    printf("Общее время работы: %.6f сек\n", total_time);
+    printf("Суммарное время обработки кадров (read+proc+write): %.6f сек\n",
+           all_processing_time_sum);
+    printf("Суммарное время ТОЛЬКО обработки: %.6f сек\n",
+           processing_time_sum);
+    printf("Суммарное время считывания: %.6f сек\n",
+           reading_time_sum);
+    printf("Суммарное время вывода: %.6f сек\n",
+           writing_time_sum);
 
-    if (total_time > 0 && frame_count > 0) {
-        double fps = frame_count / total_time;
-        double cpu_share = processing_time_sum / total_time; // доля времени
+    // даже если что-то нулевое — всё равно печатаем
+    double fps = (total_time > 0.0) ? (frame_count / total_time) : 0.0;
 
-        std::cout << "Средний FPS: " << fps << " кадров/сек\n";
-        std::cout << "Доля времени на обработку: "
-                  << cpu_share * 100.0 << " %\n";
-        std::cout << "Среднее время обработки одного кадра: "
-                  << (processing_time_sum / frame_count) * 1000.0
-                  << " мс\n";
-    }
+    double all_proc_cpu_share = (total_time > 0.0)
+        ? all_processing_time_sum / total_time : 0.0;
+    double proc_cpu_share = (total_time > 0.0)
+        ? processing_time_sum / total_time : 0.0;
+    double read_cpu_share = (total_time > 0.0)
+        ? reading_time_sum / total_time : 0.0;
+    double write_cpu_share = (total_time > 0.0)
+        ? writing_time_sum / total_time : 0.0;
+
+    printf("Средний FPS: %.3f кадров/сек\n", fps);
+    printf("Доля времени на всю обработку (read+proc+write): %.2f %%\n",
+           all_proc_cpu_share * 100.0);
+    printf("Доля времени ТОЛЬКО обработки: %.2f %%\n",
+           proc_cpu_share * 100.0);
+    printf("Доля времени на считывание: %.2f %%\n",
+           read_cpu_share * 100.0);
+    printf("Доля времени на вывод (imshow): %.2f %%\n",
+           write_cpu_share * 100.0);
+    printf("Среднее время ЧИСТОЙ обработки одного кадра: %.3f мс\n",
+           (frame_count > 0)
+               ? (processing_time_sum / frame_count) * 1000.0
+               : 0.0);
 
     return 0;
 }

@@ -1,15 +1,21 @@
   ./cam
 Старт программы
-[ WARN:0@0.031] global cap_gstreamer.cpp:1173 isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
+[ WARN:0@0.011] global cap_gstreamer.cpp:1173 isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
 Камера успешно открыта
 Нажат ESC, выходим
 Завершение программы
-Всего кадров: 16944
-Общее время работы: 609.698 сек
-Суммарное время обработки кадров: 32.1518 сек
-Средний FPS: 27.7908 кадров/сек
-Доля времени на обработку: 5.2734 %
-Среднее время обработки одного кадра: 1.89753 мс
-QThreadStorage: entry 1 destroyed before end of thread 0x561b832525c0
-QThreadStorage: entry 0 destroyed before end of thread 0x561b832525c0
+Всего кадров: 17197
+Общее время работы: 632.668170 сек
+Суммарное время обработки кадров (read+proc+write): 46.841561 сек
+Суммарное время ТОЛЬКО обработки: 16.653069 сек
+Суммарное время считывания: 28.739776 сек
+Суммарное время вывода: 1.446713 сек
+Средний FPS: 27.182 кадров/сек
+Доля времени на всю обработку (read+proc+write): 7.40 %
+Доля времени ТОЛЬКО обработки: 2.63 %
+Доля времени на считывание: 4.54 %
+Доля времени на вывод (imshow): 0.23 %
+Среднее время ЧИСТОЙ обработки одного кадра: 0.968 мс
+QThreadStorage: entry 1 destroyed before end of thread 0x56143da735a0
+QThreadStorage: entry 0 destroyed before end of thread 0x56143da735a0
   
