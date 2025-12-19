@@ -1,0 +1,201 @@
+f(double):
+        push    rbp                         сохраняем старое значение rbp в стек  
+        mov     rbp, rsp                    новый rbp = rsp
+        sub     rsp, 16                     выделил 16 байт под локальные переменные и выравниевание
+        movsd   QWORD PTR [rbp-8], xmm0     Возьми число из xmm0 и положи его в память по адресу [rbp-8]
+        mov     rax, QWORD PTR [rbp-8]      берём сохранённый x из памяти в регистр rax
+        movq    xmm0, rax                   Кладём эти же 8 байт обратно в xmm0
+        call    sin                         Результат sin(x) вернётся в xmm0
+        movsd   QWORD PTR [rbp-16], xmm0    Сохраняем sin(x) в память (в [rbp-16])
+        mov     rax, QWORD PTR [rbp-8]      
+        movq    xmm0, rax                   
+        call    exp
+        mulsd   xmm0, QWORD PTR [rbp-16]
+        leave                               вернуть rsp обратно (убрать локальные переменные) и восстановить старый rbp (который был до входа в функцию)
+        ret                                 берёт из стека адрес возврата (который положила инструкция call) и прыгает туда
+integral(double, double, int):
+        push    rbp
+        mov     rbp, rsp
+        sub     rsp, 80
+        movsd   QWORD PTR [rbp-56], xmm0 //a
+        movsd   QWORD PTR [rbp-64], xmm1 //b
+        mov     DWORD PTR [rbp-68], edi  //n
+        movsd   xmm0, QWORD PTR [rbp-64]
+        subsd   xmm0, QWORD PTR [rbp-56]    // xmm0 = b - a.
+        pxor    xmm1, xmm1                  // Обнуляем xmm1. Теперь xmm1 = 0.0
+        cvtsi2sd        xmm1, DWORD PTR [rbp-68]    // Берём n (int) из [rbp-68] и превращаем в double Теперь xmm1 = (double)n
+        divsd   xmm0, xmm1                  //     Теперь xmm0 = (b - a) / (double)n         
+        movsd   QWORD PTR [rbp-24], xmm0    //h
+        pxor    xmm0, xmm0
+        movsd   QWORD PTR [rbp-8], xmm0     // Это переменная sum = 0.0.
+        mov     DWORD PTR [rbp-12], 0       // Это переменная i = 0 (счётчик цикла).
+        jmp     .L4
+.L5:
+        pxor    xmm0, xmm0      // обнулили
+        cvtsi2sd        xmm0, DWORD PTR [rbp-12]    // превратили инт в дабл теперь xmm0 = (double)i
+        mulsd   xmm0, QWORD PTR [rbp-24]            // xmm0 = i * h
+        movsd   xmm1, QWORD PTR [rbp-56]            // xmm1 = a
+        addsd   xmm0, xmm1                          // xmm0 = a + i*h → это x_i
+        movsd   QWORD PTR [rbp-32], xmm0            // Сохранили x_i в память: [rbp-32]
+        mov     eax, DWORD PTR [rbp-12]             // eax = i 
+        add     eax, 1                              // eax = i + 1
+        pxor    xmm0, xmm0                          
+        cvtsi2sd        xmm0, eax                   //xmm0 = (double)(i+1)
+        mulsd   xmm0, QWORD PTR [rbp-24]            // xmm0 = (i+1) * h
+        movsd   xmm1, QWORD PTR [rbp-56]            // xmm1 = a
+        addsd   xmm0, xmm1                          // xmm0 = a + (i+1)*h → это x_{i+1}
+        movsd   QWORD PTR [rbp-40], xmm0            // Сохранили x_{i+1} в [rbp-40]
+        mov     rax, QWORD PTR [rbp-32]             // переложили x_i в rax
+        movq    xmm0, rax                           // переложили в векторный регистр
+        call    f(double)                           // вызваили функцию f
+        movsd   QWORD PTR [rbp-80], xmm0            // Сохранили f(x_i) во временное место [rbp-80]
+        mov     rax, QWORD PTR [rbp-40]             // переложили x_{i+1} в rax
+        movq    xmm0, rax                           // переложили в векторный регистр
+        call    f(double)                           // вызывали функцию
+        addsd   xmm0, QWORD PTR [rbp-80]            // сложили два результат функции xmm0 = f(x_{i+1}) + f(x_i)
+        movsd   xmm1, QWORD PTR .LC1[rip]           // перемещаю в xmm1 константу 2
+        divsd   xmm0, xmm1                          // xmm0 = (f(x_i) + f(x_{i+1})) / 2
+        movsd   xmm1, QWORD PTR [rbp-8]             // xmm1 = sum
+        addsd   xmm0, xmm1                          // xmm0 = sum + (...)
+        movsd   QWORD PTR [rbp-8], xmm0             // записали обратно: sum = sum + (...)
+        add     DWORD PTR [rbp-12], 1               // i = i + 1
+.L4:
+        mov     eax, DWORD PTR [rbp-68] //Берём n (int) из памяти → кладём в eax
+        cmp     eax, DWORD PTR [rbp-12] //Сравниваем n и i (i лежит в [rbp-12]).
+        jg      .L5                     //если i < n, идём в тело цикла .L5.
+        movsd   xmm0, QWORD PTR [rbp-8] // xmm0 = sum
+        mulsd   xmm0, QWORD PTR [rbp-24] // xmm0 = sum * h
+        leave
+        ret
+main:
+        push    rbp
+        mov     rbp, rsp
+        sub     rsp, 32
+        pxor    xmm0, xmm0
+        movsd   QWORD PTR [rbp-8], xmm0         // Сохраняем 0.0 в [rbp-8]. Это переменная a.
+        movsd   xmm0, QWORD PTR .LC2[rip]       // Загружаем double-константу .LC2 в xmm0.
+        movsd   QWORD PTR [rbp-16], xmm0        // Сохраняем эту константу в [rbp-16]. Это переменная b.
+        mov     DWORD PTR [rbp-20], 150000000   // Кладём число 150000000 (int, 4 байта) в [rbp-20]. Это n.
+        mov     edx, DWORD PTR [rbp-20]         // Загружает n из памяти в edx. (Почему сразу не в edi? Просто так сгенерировал компилятор — промежуточный шаг.)
+        movsd   xmm0, QWORD PTR [rbp-16]        // xmm0 = b (пока что)
+        mov     rax, QWORD PTR [rbp-8]          // rax = a (как 8 байт “бит-в-бит”)
+        mov     edi, edx
+        movapd  xmm1, xmm0
+        movq    xmm0, rax
+        call    integral(double, double, int)
+        movq    rax, xmm0
+        mov     QWORD PTR [rbp-32], rax //Сохраняем результат в локальную переменную [rbp-32] (это res).
+(Но дальше его не печатают — просто посчитали и забыли.)
+        mov     eax, 0 //main возвращает 0 (код успешного завершения).
+        leave
+        ret
+.LC1:
+        .long   0
+        .long   1073741824
+.LC2:
+        .long   1413754136
+        .long   1074340347
+
+
+
+
+        1. Отличия архитектур x86 и x86-64
+
+x86 (32-бит):
+
+32-битные регистры общего назначения (eax, ebx, …).
+
+Адресное пространство ограничено 4 ГБ.
+
+Аргументы функций обычно передаются через стек.
+
+Вещественные вычисления часто выполняются через x87 FPU (стек st(0)…st(7)).
+
+Меньше регистров → больше обращений к памяти.
+
+x86-64 (64-бит):
+
+64-битные регистры (rax, rbx, r8–r15), регистров значительно больше.
+
+Адресное пространство существенно больше 4 ГБ.
+
+Аргументы функций передаются через регистры (ABI).
+
+Вещественная арифметика выполняется через SSE/AVX (xmm, ymm).
+
+Меньше обращений к памяти, выше производительность.
+
+Итог:
+
+Архитектура x86-64 предоставляет больше регистров и более эффективные механизмы передачи данных, что позволяет генерировать более быстрый и компактный код.
+
+2. Почему следует избегать лишних обращений к памяти?
+
+Потому что память в разы медленнее регистров.
+
+Доступ к регистру: 1 такт (или близко).
+
+Доступ к L1/L2/L3 кэшу: несколько–десятки тактов.
+
+Доступ к оперативной памяти: сотни тактов.
+
+Лишние обращения к памяти:
+
+замедляют выполнение программы;
+
+создают нагрузку на кэш и шину памяти;
+
+увеличивают вероятность cache miss’ов;
+
+мешают оптимизациям (конвейер, out-of-order).
+
+Итог:
+
+Хранение данных в регистрах вместо памяти существенно повышает производительность программы.
+
+3. Как зависимости между командами влияют на исполнение программы?
+Как компилятор и процессор с ними борются?
+Типы зависимостей:
+
+RAW (Read After Write) — истинная зависимость
+→ следующая команда ждёт результат предыдущей.
+
+WAR (Write After Read) — антизависимость.
+
+WAW (Write After Write) — выходная зависимость.
+
+Влияние:
+
+Зависимости мешают параллельному исполнению команд.
+
+Конвейер простаивает, если данные ещё не готовы.
+
+Снижается эффективность выполнения.
+
+Как борется компилятор:
+
+Перестановка инструкций (instruction scheduling).
+
+Хранение значений в регистрах, а не в памяти.
+
+Разворачивание циклов (loop unrolling).
+
+Инлайнинг функций.
+
+Устранение лишних зависимостей (dead code elimination).
+
+Как борется процессор:
+
+Out-of-order execution (исполнение не по порядку).
+
+Register renaming (устраняет WAR/WAW).
+
+Спекулятивное исполнение.
+
+Предсказание переходов.
+
+Параллельное выполнение на нескольких функциональных блоках.
+
+Итог:
+
+Компилятор старается минимизировать зависимости на уровне кода, а процессор — скрыть оставшиеся зависимости за счёт аппаратных механизмов параллелизма.

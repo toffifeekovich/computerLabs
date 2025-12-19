@@ -1,0 +1,122 @@
+f(double):
+        sub     rsp, 24                      // кадр на rsp, 24 байта (как и в -O1)
+        movsd   QWORD PTR [rsp+8], xmm0      // ⬅ ОТЛИЧИЕ: в -O1 x сохраняли в [rsp], тут в [rsp+8]
+        call    sin                          // sin(x), результат в xmm0
+        movsd   QWORD PTR [rsp], xmm0        // ⬅ ОТЛИЧИЕ: в -O1 sin(x) сохраняли в [rsp+8], тут в [rsp]
+        movsd   xmm0, QWORD PTR [rsp+8]      // загружаем x обратно в xmm0
+        call    exp                          // exp(x), результат в xmm0
+        mulsd   xmm0, QWORD PTR [rsp]        // xmm0 = exp(x) * sin(x) (берём sin(x) из [rsp])
+        add     rsp, 24                      // восстановили rsp
+        ret                                  // вернуть double в xmm0
+
+Смысл тот же, отличие только в перестановке слотов памяти [rsp]/[rsp+8].
+
+integral(double, double, int):
+        subsd   xmm1, xmm0                   // ⬅ ОТЛИЧИЕ: сразу b-a (в -O1 это тоже было, но порядок пролога был другим)
+        pxor    xmm2, xmm2                   // xmm2 = 0.0 (будет вспомогательным/накопителем)
+        push    rbp                          // сохраняем rbp
+        cvtsi2sd        xmm2, edi            // xmm2 = (double)n   ⬅ ОТЛИЧИЕ: в -O1 конвертировали в xmm0
+        push    rbx                          // сохраняем rbx
+        divsd   xmm1, xmm2                   // xmm1 = (b-a)/n = h
+        sub     rsp, 72                      // ⬅ ОТЛИЧИЕ: стек 72 байта (в -O1 было 56)
+        movsd   QWORD PTR [rsp+48], xmm1     // h -> [rsp+48]
+        test    edi, edi                     // проверка n<=0
+        jle     .L7                          // если n<=0 -> результат 0
+Подготовка перед циклом
+        movapd  xmm7, xmm0                   // ⬅ ОТЛИЧИЕ: сохраняем a в xmm7 (регистр), в -O1 a чаще тянули из памяти
+        movsd   QWORD PTR [rsp+56], xmm0     // a -> [rsp+56] (страховка/локалка)
+        pxor    xmm0, xmm0                   // xmm0 = 0.0
+        mov     ebx, edi                     // ebx = n (n в регистре)
+        mulsd   xmm0, xmm1                   // xmm0 = 0*h = 0
+        xor     ebp, ebp                     // ⬅ ОТЛИЧИЕ: i (счётчик) хранится в ebp, в -O1 был ebx/ebp иначе
+        addsd   xmm0, xmm7                   // xmm0 = a + 0*h = a  => x0
+        call    sin                          // ⬅ ОТЛИЧИЕ: предвычисляют sin(a) сразу (в -O1 считали через f внутри цикла)
+        pxor    xmm2, xmm2                   // xmm2 = 0.0 (будет sum)
+        movsd   QWORD PTR [rsp+8], xmm0      // сохраняем sin(x_i) (стартовое) в [rsp+8]
+        movapd  xmm1, xmm2                   // xmm1 = 0.0 (служебное)
+
+Ключевое отличие от -O1:
+⬅ -O2 частично “разворачивает” f(x)=sin(x)*exp(x) прямо в integral (видно отдельные call sin и call exp внутри цикла), вместо того чтобы каждый раз вызывать f(double) два раза. Это делает код длиннее, но быстрее.
+
+.L6:
+        movsd   xmm4, QWORD PTR [rsp+48]     // xmm4 = h
+        add     ebp, 1                       // i++
+        movsd   xmm5, QWORD PTR [rsp+56]     // xmm5 = a
+        movsd   QWORD PTR [rsp+40], xmm2     // ⬅ ОТЛИЧИЕ: сохраняем sum временно (spill) в [rsp+40]
+        mulsd   xmm1, xmm4                   // ⬅ ОТЛИЧИЕ: xmm1 используется как накопитель шага (в -O1 было проще)
+        movapd  xmm3, xmm1                   // xmm3 = (что-то вроде i*h предыдущего шага)
+        pxor    xmm1, xmm1                   // xmm1 = 0.0
+        cvtsi2sd        xmm1, ebp            // xmm1 = (double)i
+        mulsd   xmm4, xmm1                   // xmm4 = h * i
+        addsd   xmm3, xmm5                   // xmm3 = a + (...)  => x_i (или один из x)
+        movsd   QWORD PTR [rsp+32], xmm1     // ⬅ ОТЛИЧИЕ: сохраняем i как double (нужно дальше)
+        movapd  xmm0, xmm4
+        addsd   xmm0, xmm5                   // xmm0 = a + i*h  => x_{i+1} (по факту)
+        movsd   QWORD PTR [rsp+16], xmm0     // x_{i+1} -> [rsp+16]
+
+        movapd  xmm0, xmm3                   // xmm0 = x_i
+        call    exp                          // exp(x_i)
+        movsd   xmm6, QWORD PTR [rsp+8]      // xmm6 = sin(x_i) (с прошлого шага)
+        mulsd   xmm6, xmm0                   // xmm6 = sin(x_i) * exp(x_i) = f(x_i)
+
+        movsd   xmm0, QWORD PTR [rsp+16]     // xmm0 = x_{i+1}
+        movsd   QWORD PTR [rsp+24], xmm6     // сохраняем f(x_i) во временное [rsp+24]
+        call    sin                          // sin(x_{i+1})
+        movsd   QWORD PTR [rsp+8], xmm0      // ⬅ ОТЛИЧИЕ: обновляем сохранённое sin(x_i) = sin(x_{i+1}) для след. итерации
+
+        movsd   xmm0, QWORD PTR [rsp+16]     // xmm0 = x_{i+1} снова
+        call    exp                          // exp(x_{i+1})
+        mulsd   xmm0, QWORD PTR [rsp+8]      // xmm0 = exp(x_{i+1}) * sin(x_{i+1}) = f(x_{i+1})
+
+        cmp     ebp, ebx                     // сравниваем i и n
+        movsd   xmm2, QWORD PTR [rsp+40]     // ⬅ ОТЛИЧИЕ: возвращаем sum из spill
+        addsd   xmm0, QWORD PTR [rsp+24]     // xmm0 = f(x_{i+1}) + f(x_i)
+        mulsd   xmm0, QWORD PTR .LC1[rip]    // ⬅ ОТЛИЧИЕ: умножение на 0.5 вместо деления на 2 (как в -O1)
+        movsd   xmm1, QWORD PTR [rsp+32]     // ⬅ ОТЛИЧИЕ: подтягиваем i(double) (служебное)
+        addsd   xmm2, xmm0                   // sum += (f_i + f_{i+1})/2
+        jne     .L6                          // если i != n -> продолжить
+
+Обрати внимание: в -O1 было проще: x_i и x_{i+1} считались, два раза вызывали f, потом делили/умножали на 0.5.
+В -O2 компилятор убрал вызовы f внутри цикла, заменив их прямыми sin/exp + переиспользованием sin между итерациям
+
+.L5:
+        movsd   xmm0, QWORD PTR [rsp+48]     // xmm0 = h
+        add     rsp, 72
+        pop     rbx
+        pop     rbp
+        mulsd   xmm0, xmm2                   // ⬅ ОТЛИЧИЕ: умножение на sum делается уже после восстановления стека
+        ret
+
+.L7:
+        pxor    xmm2, xmm2                   // sum = 0
+        jmp     .L5                          // вернём 0
+
+main:
+        sub     rsp, 8                       // выравнивание стека перед вызовом
+        movsd   xmm1, QWORD PTR .LC2[rip]    // b = π
+        mov     edi, 150000000               // n
+        pxor    xmm0, xmm0                   // a = 0.0
+        call    integral(double, double, int)// integral(a,b,n)
+        xor     eax, eax                     // ⬅ ОТЛИЧИЕ: вместо mov eax,0 (мелкая оптимизация)
+        add     rsp, 8
+        ret
+
+.LC1:
+        .long   0
+        .long   1071644672
+
+Это та же идея, что в -O1: коэффициент 0.5 (замена /2 на *0.5).
+(В -O0 была 2.0 и делили.)
+
+.LC2:
+        .long   1413754136
+        .long   1074340347                   // π
+
+
+⬅ Убрали вызовы f(double) внутри цикла: вместо них компилятор делает sin/exp напрямую.
+
+⬅ Переиспользование sin(x_i) между итерациями: sin(x_{i+1}) вычисляют и сохраняют, чтобы в следующем шаге это стало sin(x_i).
+
+⬅ Стековый кадр стал больше (72 вместо 56) из-за большего числа временных значений при таком переписывании.
+
+Мелочи: xor eax,eax вместо mov eax,0.

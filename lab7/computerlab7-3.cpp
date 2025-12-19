@@ -39,7 +39,7 @@ int main() {
 
     srand(0);
 
-    // ✔️ ТАЙМЕР НАЧАЛО — WALL TIME (настоящая реальная секунда, а не CPU!)
+    //  ТАЙМЕР НАЧАЛО 
     auto t0 = std::chrono::high_resolution_clock::now();
 
     // 1) A — случайная
@@ -62,7 +62,7 @@ int main() {
         for (int j = 0; j < N; j++)
             MAT(B,i,j,N) = MAT(AT,i,j,N) / alpha;
 
-    // 5) BA = B * A         ✔️ BLAS
+    // 5) BA = B * A         BLAS
     cblas_sgemm(
         CblasRowMajor, CblasNoTrans, CblasNoTrans,
         N, N, N,
@@ -72,6 +72,32 @@ int main() {
         0.0f,
         BA, N
     );
+    /*
+CblasRowMajor -Матрицы лежат в памяти по строкам (A[i*N + j]).
+
+CblasNoTrans, CblasNoTrans
+Ничего не транспонируем: op(B)=B, op(A)=A.
+
+N, N, N
+Это размеры:
+
+M = N (строки результата)
+
+N = N (столбцы результата)
+
+K = N (общая внутренняя размерность)
+
+1.0f — это alpha из формулы BLAS 
+
+B, N — матрица B и её leading dimension (шаг по строке).
+При RowMajor это обычно просто N.
+
+A, N — матрица A
+
+0.0f — beta (значит старое содержимое BA не учитываем)
+
+BA, N — куда писать результат
+    */
 
     // 6) R = I - BA
     for (int i = 0; i < N; i++)
@@ -108,7 +134,7 @@ int main() {
         TMP = t;
     }
 
-    // 8) A^{-1} ≈ B * S   ✔️ BLAS
+    // 8) A^{-1} ≈ B * S    BLAS
     cblas_sgemm(
         CblasRowMajor, CblasNoTrans, CblasNoTrans,
         N, N, N,
@@ -119,7 +145,7 @@ int main() {
         TMP, N    // результат (приближённая inverse)
     );
 
-    // ✔️ ТАЙМЕР КОНЕЦ
+    //  ТАЙМЕР КОНЕЦ
     auto t1 = std::chrono::high_resolution_clock::now();
     double seconds = std::chrono::duration<double>(t1 - t0).count();
 
@@ -133,3 +159,7 @@ int main() {
     return 0;
 }
 //g++ computerlab7-3.cpp -O3 -march=native -ffast-math -lopenblas -o lab7_blas
+/*
+матрицы хранятся как один плоский массив float* (не float**)
+умножение C = A*B выполняет OpenBLAS/BLAS, внутри там SIMD + блокирование + работа с кэшем + часто многопоточность
+*/

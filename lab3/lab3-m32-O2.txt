@@ -1,0 +1,199 @@
+f(double):
+        sub     esp, 44                      // ⬅ ОТЛИЧИЕ: нет frame-pointer (push ebp / mov ebp,esp); кадр строится от esp
+                                             // ⬅ ОТЛИЧИЕ: размер кадра 44 (в -O0 было 24)
+
+        fld     QWORD PTR [esp+48]           // ⬅ ОТЛИЧИЕ: берём аргумент x прямо со стека по esp+48 (в -O0 было [ebp+8]/[ebp+12])
+        fst     QWORD PTR [esp+16]           // сохраняем x в локалку, НЕ POP (fst = store без pop)
+        fstp    QWORD PTR [esp]              // кладём x в [esp] как аргумент sin и POP из x87
+
+        call    sin                          // sin(x), результат в st(0)
+
+        pop     eax                          // ⬅ ОТЛИЧИЕ: очистка стека аргумента после call через pop/pop (в -O0 было add esp,16)
+        pop     edx                          // ⬅ ОТЛИЧИЕ: ещё 4 байта (итого 8 байт) — удалили double аргумент sin
+
+        fstp    QWORD PTR [esp+16]           // сохраняем sin(x) в локалку и POP из x87
+
+        push    DWORD PTR [esp+12]           // ⬅ ОТЛИЧИЕ: адресация аргумента exp через esp (смещения другие из-за отсутствия ebp)
+        push    DWORD PTR [esp+12]           // ⬅ ОТЛИЧИЕ: кладём 8 байт x (две половины double) для exp
+        call    exp                          // exp(x), результат в st(0)
+
+        fmul    QWORD PTR [esp+24]           // st(0) = exp(x) * sin(x) (sin(x) лежит в локалке по esp+24)
+
+        add     esp, 44                      // восстановить esp (убрать локальные)
+        ret                                  // вернуть; double-результат в st(0)
+
+Главные отличия f от -O0:
+
+⬅ ОТЛИЧИЕ: убрали ebp-кадр → всё через esp+....
+
+⬅ ОТЛИЧИЕ: очищают аргумент sin через pop eax; pop edx вместо add esp, ....
+
+⬅ ОТЛИЧИЕ: структура такая же по смыслу, но адреса/смещения изменились.
+
+integral(double, double, int):
+        push    esi                          // ⬅ ОТЛИЧИЕ: сохраняем callee-saved (esi будет n)
+        push    ebx                          // ⬅ ОТЛИЧИЕ: ebx будет i
+        sub     esp, 68                      // ⬅ ОТЛИЧИЕ: кадр от esp и другой размер (в -O0 было sub esp,88 + ebp)
+
+        fld     QWORD PTR [esp+80]           // ⬅ ОТЛИЧИЕ: загружаем один из double аргументов из стека (смещение от esp)
+        mov     esi, DWORD PTR [esp+96]      // ⬅ ОТЛИЧИЕ: n сразу в esi (в -O0 n часто таскали через память/ebp)
+        mov     DWORD PTR [esp+8], esi       // кладём n в память, чтобы fild мог загрузить int
+
+        fst     QWORD PTR [esp+56]           // ⬅ ОТЛИЧИЕ: сохраняем один из аргументов (обычно 'a') в локалку, не pop из x87
+        fld     QWORD PTR [esp+88]           // загружаем второй double аргумент (обычно 'b')
+
+        fsub    st, st(1)                    // ⬅ ОТЛИЧИЕ: вычисляем (b - a) прямо в x87 стеке (вариант формы вычитания отличается от -O0)
+
+        fild    DWORD PTR [esp+8]            // st(0) = (double)n
+        fdivp   st(1), st                    // st(0) = (b-a)/n = h
+        fst     QWORD PTR [esp+48]           // h -> [esp+48] (fst без pop: значение остаётся в x87)
+        test    esi, esi                     // ⬅ ОТЛИЧИЕ: добавлена проверка n <= 0
+        jle     .L7
+Подготовка перед циклом: “переиспользование sin”, как в x86-64 -O2
+
+Это очень важное отличие: компилятор не вызывает f() два раза, а делает sin/exp напрямую и переиспользует sin между итерациями.
+        fldz                                 // 0.0
+        sub     esp, 16                      // ⬅ ОТЛИЧИЕ: выделили место под временные/аргументы
+        xor     ebx, ebx                     // i = 0 в регистре
+
+        fmulp   st(1), st                    // ⬅ ОТЛИЧИЕ: “подготовка” (умножение на 0) прямо в x87 (строят x0 = a + 0*h)
+        faddp   st(1), st                    // ⬅ ОТЛИЧИЕ: получение x0 (обычно a)
+
+        fstp    QWORD PTR [esp]              // кладём x0 как аргумент sin
+        call    sin                          // sin(x0), результат st(0)
+        add     esp, 16                      // ⬅ ОТЛИЧИЕ: очистка/возврат стека под временные
+
+        fstp    QWORD PTR [esp+8]            // сохраняем sin(x_i) (стартовое) в локалку (будет использоваться как sin(x_i) на шаге)
+
+        fldz                                 // st(0)=0.0  (sum = 0)
+        fldz                                 // ⬅ ОТЛИЧИЕ: ещё один 0.0 на стеке x87 (держат несколько значений в x87-стеке)
+        jmp     .L6
+
+.L10:
+        fxch    st(1)                        // ⬅ ОТЛИЧИЕ: перестановка вершин x87-стека для удобного порядка значений
+.L6:
+        fstp    QWORD PTR [esp+40]           // ⬅ ОТЛИЧИЕ: активная работа через x87-стек (значения часто держат в st(), а не в памяти)
+        fld     QWORD PTR [esp+48]           // h
+        add     ebx, 1                       // i++
+        sub     esp, 16                      // место под временные/аргументы
+        mov     DWORD PTR [esp+32], ebx      // i в память для fild
+
+        fmul    st(1), st                    // ⬅ вычисление i*h на уровне x87-стека
+        fld     QWORD PTR [esp+72]           // загружаем a (или сохранённое) из локалки
+        fadd    st(2), st                    // формируем x_i
+
+        fild    DWORD PTR [esp+32]           // (double)i
+        fmul    st(2), st                    // (i*h) для следующей точки
+        fstp    QWORD PTR [esp+48]           // сохраняем (double)i или шаговое (зависит от раскладки)
+
+        faddp   st(1), st                    // получаем x_{i+1}
+        fstp    QWORD PTR [esp+32]           // x_{i+1} -> локалка
+
+Важный кусок: exp(x_i) * sin(x_i) без вызова f()
+
+        fstp    QWORD PTR [esp]              // x_i как аргумент exp
+        call    exp                          // exp(x_i), результат st(0)
+        fmul    QWORD PTR [esp+24]           // ⬅ ОТЛИЧИЕ: умножение на сохранённый sin(x_i) => f(x_i)
+        fstp    QWORD PTR [esp+40]           // сохраняем f(x_i)
+
+Дальше: считаем sin(x_{i+1}), сохраняем как “следующий sin(x_i)”:
+        pop     eax                          // ⬅ ОТЛИЧИЕ: чистят стек pop/pop, а не add esp
+        pop     edx
+
+        push    DWORD PTR [esp+28]           // передаём x_{i+1} (две половины)
+        push    DWORD PTR [esp+28]
+        call    sin                          // sin(x_{i+1})
+        pop     ecx
+        pop     eax
+        fstp    QWORD PTR [esp+16]           // сохраняем sin(x_{i+1}) (будет использовано в следующей итерации)
+Потом exp(x_{i+1}) и умножение на sin(x_{i+1}):
+        push    DWORD PTR [esp+28]           // x_{i+1} снова
+        push    DWORD PTR [esp+28]
+        call    exp                          // exp(x_{i+1})
+        fmul    QWORD PTR [esp+24]           // ⬅ exp(x_{i+1}) * sin(x_{i+1}) => f(x_{i+1})
+
+Суммирование трапеции и умножение на коэффициент 0.5:
+        fadd    QWORD PTR [esp+40]           // f(x_{i+1}) + f(x_i)
+        fmul    DWORD PTR .LC2               // ⬅ ОТЛИЧИЕ: *0.5 (float) вместо деления на 2 через fld 2.0 / fdivp
+        fld     QWORD PTR [esp+56]           // ⬅ загружаем sum (или накопитель)
+        add     esp, 16
+        cmp     ebx, esi                     // сравнение i и n (оба в регистрах)
+        faddp   st(1), st                    // sum += (f_i+f_{i+1})*0.5
+        fld     QWORD PTR [esp+32]           // загрузка чего-то для продолжения (часть организации x87-стека)
+        jne     .L10
+
+
+
+        fstp    st(0)                        // ⬅ ОТЛИЧИЕ: подчистка x87-стека (лишние значения)
+        fld     QWORD PTR [esp+48]           // h
+        add     esp, 68
+        pop     ebx
+        pop     esi
+        fmulp   st(1), st                    // ⬅ результат = h * sum (в st(0))
+        ret
+
+
+.L7:
+        fstp    st(0)                        // ⬅ ОТЛИЧИЕ: чистят x87-стек
+        fstp    st(0)
+        fldz                                 // sum = 0
+        fld     QWORD PTR [esp+48]           // h
+        add     esp, 68
+        pop     ebx
+        pop     esi
+        fmulp   st(1), st                    // 0 * h = 0
+        ret
+
+
+
+
+Главные отличия integral от -O0 (m32):
+
+    ⬅ ОТЛИЧИЕ: i в ebx, n в esi (в -O0 всё чаще лежало в памяти).
+
+    ⬅ ОТЛИЧИЕ: убрали вызовы f(double) в цикле — вместо этого прямые call sin/call exp + умножения.
+
+    ⬅ ОТЛИЧИЕ: переиспользование sin(x_i) между итерациями (как в x86-64 -O2).
+
+    ⬅ ОТЛИЧИЕ: деление на 2 заменено на умножение * .LC2 (float 0.5).
+
+    ⬅ ОТЛИЧИЕ: гораздо больше “жонглирования” x87-стеком (fxch, fstp st(0)), потому что оптимизация держит значения в st().
+    
+
+
+    main:
+        lea     ecx, [esp+4]                 // подготовка к выравниванию
+        and     esp, -16                     // выравнивание стека
+
+        push    DWORD PTR [ecx-4]
+        push    ebp
+        mov     ebp, esp
+        push    ecx
+        sub     esp, 16                      // локальные
+
+        push    150000000                    // n
+        push    1074340347                   // b = π (high)
+        push    1413754136                   // b = π (low)
+        push    0                            // a = 0.0 (high/low)
+        push    0
+        call    integral(double, double, int)
+
+        fstp    st(0)                        // ⬅ ОТЛИЧИЕ: результат не используется — просто убирают из x87
+        mov     ecx, DWORD PTR [ebp-4]
+        add     esp, 32                      // чистим аргументы
+
+        xor     eax, eax                     // ⬅ ОТЛИЧИЕ: вместо mov eax,0
+        leave
+        lea     esp, [ecx-4]
+        ret
+
+.LC2:
+        .long   1056964608                   // ⬅ ОТЛИЧИЕ: 32-бит float-константа (обычно 0.5f) для умножения вместо /2
+
+Убрали frame-pointer ebp в f/integral → адресация через esp+....
+
+Цикл переписан: вместо f(x) два раза — прямые вызовы sin/exp и умножение, плюс переиспользование sin между итерациями.
+
+*/2 заменили на 0.5 (fmul DWORD PTR .LC2).
+
+Много операций управления x87-стеком (fxch, fstp st(0)) — это следствие оптимизации.

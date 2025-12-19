@@ -1,0 +1,91 @@
+f(double):
+        sub     rsp, 24                      // ⬅ ОТЛИЧИЕ: нет push rbp/mov rbp,rsp; кадр на rsp, выделили 24 байта
+        movsd   QWORD PTR [rsp], xmm0        // x (аргумент в xmm0) сохраняем прямо по rsp (без rbp-8)
+        call    sin                          // sin(x), результат в xmm0
+        movsd   QWORD PTR [rsp+8], xmm0      // сохраняем sin(x) в [rsp+8]
+        movsd   xmm0, QWORD PTR [rsp]        // ⬅ ОТЛИЧИЕ: загружаем x обратно напрямую в xmm0 (без rax/movq)
+        call    exp                          // exp(x), результат в xmm0
+        mulsd   xmm0, QWORD PTR [rsp+8]      // xmm0 = exp(x) * sin(x)
+        add     rsp, 24                      // ⬅ ОТЛИЧИЕ: вместо leave — просто возвращаем rsp назад
+        ret                                  // возврат; double в xmm0
+
+integral(double, double, int):
+        push    rbp                          // ⬅ ОТЛИЧИЕ: сохраняются регистры (callee-saved), -O0 так не делал
+        push    rbx                          // ⬅ ОТЛИЧИЕ: rbx будет использован под i
+        sub     rsp, 56                      // ⬅ ОТЛИЧИЕ: меньше стек (56 вместо 80), меньше локалок в памяти
+
+        movsd   QWORD PTR [rsp+40], xmm0     // ⬅ ОТЛИЧИЕ: сохраняем a по rsp+40 (а не [rbp-56])
+
+        subsd   xmm1, xmm0                   // ⬅ ОТЛИЧИЕ: сразу считаем (b - a) в регистре: xmm1 = xmm1 - xmm0
+                                             // (в -O0 это делалось через память [rbp-64],[rbp-56])
+
+        pxor    xmm0, xmm0                   // xmm0 = 0.0 (подготовка)
+        cvtsi2sd        xmm0, edi            // ⬅ ОТЛИЧИЕ: n берём прямо из edi (без сохранения в [rbp-68])
+        divsd   xmm1, xmm0                   // xmm1 = (b - a) / n  => это h
+        movsd   QWORD PTR [rsp+32], xmm1     // сохраняем h в [rsp+32]
+
+        test    edi, edi                     // ⬅ ОТЛИЧИЕ: проверка n <= 0 (ранний выход)
+        jle     .L6                          // если n <= 0 -> перейти к ветке, где sum=0
+
+        mov     ebp, edi                     // ⬅ ОТЛИЧИЕ: n сохраняем в ebp (регистр), чтобы сравнивать в цикле
+        mov     ebx, 0                       // ⬅ ОТЛИЧИЕ: i = 0 хранится в ebx (регистр), а не в памяти
+        mov     QWORD PTR [rsp+8], 0x000000000 // sum = 0.0 (double) в памяти
+
+.L5:
+        pxor    xmm0, xmm0                   // xmm0 = 0.0
+        cvtsi2sd        xmm0, ebx            // ⬅ ОТЛИЧИЕ: i берётся из ebx (а не [rbp-12])
+        movsd   xmm2, QWORD PTR [rsp+32]     // xmm2 = h
+        mulsd   xmm0, xmm2                   // xmm0 = i*h
+        movsd   xmm3, QWORD PTR [rsp+40]     // xmm3 = a
+        addsd   xmm0, xmm3                   // xmm0 = a + i*h  => x_i
+
+        add     ebx, 1                       // ⬅ ОТЛИЧИЕ: i++ сделан сразу (i хранится в регистре)
+
+        pxor    xmm1, xmm1                   // xmm1 = 0.0
+        cvtsi2sd        xmm1, ebx            // xmm1 = (double)(i) (уже i+1)
+        mulsd   xmm1, xmm2                   // xmm1 = (i+1)*h
+        addsd   xmm1, xmm3                   // xmm1 = a + (i+1)*h => x_{i+1}
+
+        movsd   QWORD PTR [rsp+24], xmm1     // сохраняем x_{i+1} во временное место
+        call    f(double)                    // ⬅ ОТЛИЧИЕ: x_i уже в xmm0, можно сразу вызвать f(x_i) без перекладываний
+        movsd   QWORD PTR [rsp+16], xmm0     // сохраняем f(x_i)
+
+        movsd   xmm0, QWORD PTR [rsp+24]     // xmm0 = x_{i+1}
+        call    f(double)                    // f(x_{i+1})
+        addsd   xmm0, QWORD PTR [rsp+16]     // xmm0 = f(x_{i+1}) + f(x_i)
+
+        mulsd   xmm0, QWORD PTR .LC1[rip]    // ⬅ ОТЛИЧИЕ: умножение на константу (см. ниже .LC1) вместо деления на 2
+        addsd   xmm0, QWORD PTR [rsp+8]      // xmm0 = sum + ...
+        movsd   QWORD PTR [rsp+8], xmm0      // sum = xmm0
+
+        cmp     ebx, ebp                     // сравнение i и n (оба в регистрах)
+        jne     .L5                          // если i != n -> ещё итерация
+
+.L4:
+        movsd   xmm0, QWORD PTR [rsp+32]     // xmm0 = h
+        mulsd   xmm0, QWORD PTR [rsp+8]      // xmm0 = h * sum => результат интеграла
+        add     rsp, 56                      // убрать локальные
+        pop     rbx                          // ⬅ ОТЛИЧИЕ: восстановление callee-saved
+        pop     rbp
+        ret
+
+.L6:
+        mov     QWORD PTR [rsp+8], 0x000000000 // sum = 0.0
+        jmp     .L4                             // вернуть 0 (т.к. h * 0 = 0)
+
+main:
+        sub     rsp, 8                       // ⬅ ОТЛИЧИЕ: минимальная коррекция стека (под выравнивание перед call)
+        mov     edi, 150000000               // ⬅ ОТЛИЧИЕ: n сразу в edi (без локальной переменной [rbp-20])
+        movsd   xmm1, QWORD PTR .LC2[rip]    // b = π в xmm1
+        pxor    xmm0, xmm0                   // a = 0.0 в xmm0
+        call    integral(double, double, int)// вызываем integral(a,b,n)
+        mov     eax, 0                       // return 0
+        add     rsp, 8                       // ⬅ ОТЛИЧИЕ: вернуть rsp
+        ret
+
+.LC1:
+        .long   0
+        .long   1071644672
+.LC2:
+        .long   1413754136
+        .long   1074340347

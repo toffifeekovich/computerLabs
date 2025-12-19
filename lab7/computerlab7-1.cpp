@@ -3,15 +3,15 @@
 #include <math.h>
 #include <chrono>
 
-// --------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---------
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 
-float** alloc_matrix(int N) {
+float** alloc_matrix(int N) {//создаем массив указателей на строки
     float **A = (float**)malloc(N * sizeof(float*));
     if (!A) {
         fprintf(stderr, "alloc_matrix: malloc failed (rows)\n");
         exit(1);
     }
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < N; i++) {//выделяем память под каждую строку
         A[i] = (float*)malloc(N * sizeof(float));
         if (!A[i]) {
             fprintf(stderr, "alloc_matrix: malloc failed (cols)\n");
@@ -21,24 +21,24 @@ float** alloc_matrix(int N) {
     return A;
 }
 
-void free_matrix(float **A, int N) {
+void free_matrix(float **A, int N) {//освобождаем строки потом и массив строк
     for (int i = 0; i < N; i++)
         free(A[i]);
     free(A);
 }
 
-float norm_inf(float **A, int N) {
+float norm_inf(float **A, int N) {//Считает бесконечную норму матрицы
     float m = 0.0f;
     for (int i = 0; i < N; i++) {
         float s = 0.0f;
         for (int j = 0; j < N; j++)
-            s += fabsf(A[i][j]);
-        if (s > m) m = s;
+            s += fabsf(A[i][j]); // для каждой строки считается сумма модулей
+        if (s > m) m = s;// берётся максимальная
     }
     return m;
 }
 
-void mat_mul(float **C, float **A, float **B, int N) {
+void mat_mul(float **C, float **A, float **B, int N) {//Обычное, наивное умножение матриц
     for (int i = 0; i < N; i++)
         for (int j = 0; j < N; j++) {
             float s = 0.0f;
@@ -48,25 +48,25 @@ void mat_mul(float **C, float **A, float **B, int N) {
         }
 }
 
-// --------- ОСНОВНАЯ ПРОГРАММА (NAIVE) ---------
+// ОСНОВНАЯ ПРОГРАММА 
 
 int main() {
-    int N = 2048;
-    int M = 10;
+    int N = 2048; //размер матрицы
+    int M = 10; //число членов ряда (глубина приближения)
 
-    float **A   = alloc_matrix(N);
-    float **AT  = alloc_matrix(N);
-    float **B   = alloc_matrix(N);
-    float **BA  = alloc_matrix(N);
-    float **R   = alloc_matrix(N);
-    float **Rk  = alloc_matrix(N);
-    float **S   = alloc_matrix(N);
-    float **tmp = alloc_matrix(N);
+    float **A   = alloc_matrix(N);//исходная матрица
+    float **AT  = alloc_matrix(N);//транспонированная матрица
+    float **B   = alloc_matrix(N);//приближение обратной матрицы
+    float **BA  = alloc_matrix(N);//вспомогательная матрица для хранения произведения B*A
+    float **R   = alloc_matrix(N);//вспомогательная матрица R = I - B*A
+    float **Rk  = alloc_matrix(N);//вспомогательная матрица для хранения R^k
+    float **S   = alloc_matrix(N);//сумма ряда S = I + R + R^2 + ... + R^(M-1)
+    float **tmp = alloc_matrix(N);//временная
 
     srand(0);
 
     using clock_type = std::chrono::high_resolution_clock;
-    auto start = clock_type::now();
+    auto start = clock_type::now(); // старт замера времени
 
     // 1) Инициализация матрицы A
     for (int i = 0; i < N; i++)
@@ -79,9 +79,9 @@ int main() {
             AT[i][j] = A[j][i];
 
     // 3) Нормы
-    float na  = norm_inf(A,  N);
-    float nat = norm_inf(AT, N);
-    float alpha = na * nat;
+    float na  = norm_inf(A,  N);// ||A||_∞
+    float nat = norm_inf(AT, N);// ||A^T||_∞
+    float alpha = na * nat;// α = ||A||_∞ * ||A^T||_∞
 
     // 4) B = AT / alpha
     for (int i = 0; i < N; i++)
@@ -118,16 +118,16 @@ int main() {
         tmp = t;
     }
 
-    // 8) A^{-1} ≈ B * S
-    mat_mul(tmp, B, S, N);
+    // 8) A^{-1} ≈ B * S 
+    mat_mul(tmp, B, S, N);// результат записывается в tmp
 
-    auto end = clock_type::now();
-    double seconds = std::chrono::duration<double>(end - start).count();
+    auto end = clock_type::now();// конец замера времени
+    double seconds = std::chrono::duration<double>(end - start).count();// вычисляем разницу во времени
 
     printf("Готово (NAIVE)\n");
     printf("Время выполнения (NAIVE): %.6f секунд\n", seconds);
 
-    // не обязательно, но красиво:
+
     free_matrix(A, N);
     free_matrix(AT, N);
     free_matrix(B, N);
@@ -139,3 +139,9 @@ int main() {
 
     return 0;
 }
+
+/*
+В этом варианте реализовано приближённое обращение матрицы через степенной ряд.
+Используется формула из методички
+Все операции — наивные, без SIMD и оптимизаций, чтобы использовать как базовый вариант для сравнения производительности.
+*/

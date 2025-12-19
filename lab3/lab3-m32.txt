@@ -1,0 +1,152 @@
+f(double):
+        push    ebp                         // (ОТЛИЧИЕ) 32-бит: сохраняем EBP (вместо RBP)
+        mov     ebp, esp                    // (ОТЛИЧИЕ) 32-бит: базовый указатель = ESP (вместо RSP)
+        sub     esp, 24                     // (ОТЛИЧИЕ) 32-бит: место под локальные + выравнивание (тут 24 байта)
+
+        mov     eax, DWORD PTR [ebp+8]      // (ОТЛИЧИЕ) аргументы в x86 передаются через СТЕК:
+                                            // [ebp+8]  = младшие 4 байта double x
+        mov     edx, DWORD PTR [ebp+12]     // [ebp+12] = старшие 4 байта double x
+
+        mov     DWORD PTR [ebp-16], eax     // сохраняем младшие 4 байта x в локалку
+        mov     DWORD PTR [ebp-12], edx     // сохраняем старшие 4 байта x в локалку
+                                            // (итого локально x лежит как 8 байт: [ebp-16..-9])
+
+        sub     esp, 8                      // (ОТЛИЧИЕ) резервируем 8 байт, чтобы правильно выровнять стек перед push/call
+        push    DWORD PTR [ebp-12]          // (ОТЛИЧИЕ) кладём на стек старшие 4 байта x (порядок важен)
+        push    DWORD PTR [ebp-16]          // кладём младшие 4 байта x
+        call    sin                         // (ОТЛИЧИЕ) x86: аргумент sin(x) берётся со стека, а результат возвращается в x87 FPU (st(0))
+        add     esp, 16                     // (ОТЛИЧИЕ) очищаем стек: 8 (sub) + 8 (push+push) = 16 байт
+
+        fstp    QWORD PTR [ebp-24]          // (ОТЛИЧИЕ) сохраняем sin(x) из вершины x87-стека st(0) в память и POP из FPU-стека
+
+        sub     esp, 8                      // снова готовим стек под передачу double
+        push    DWORD PTR [ebp-12]          // старшие 4 байта x
+        push    DWORD PTR [ebp-16]          // младшие 4 байта x
+        call    exp                         // (ОТЛИЧИЕ) exp(x): аргумент со стека, результат в st(0)
+        add     esp, 16                     // очищаем стек аргументов
+
+        fmul    QWORD PTR [ebp-24]          // (ОТЛИЧИЕ) умножение в x87: st(0) = st(0) * [ebp-24] = exp(x) * sin(x)
+        leave                               // (ОТЛИЧИЕ по регистрам) эквивалент: mov esp, ebp; pop ebp
+        ret                                 // возврат; результат функции сейчас в st(0) (x87), а не в xmm0
+integral(double, double, int):
+        push    ebp                         // (ОТЛИЧИЕ) 32-битный пролог
+        mov     ebp, esp
+        sub     esp, 88                     // (ОТЛИЧИЕ) больше места под локальные (компилятор хранит много временных)
+
+        mov     eax, DWORD PTR [ebp+8]      // (ОТЛИЧИЕ) a: младшие 4 байта
+        mov     edx, DWORD PTR [ebp+12]     // (ОТЛИЧИЕ) a: старшие 4 байта
+        mov     DWORD PTR [ebp-64], eax     // сохраняем a (low)
+        mov     DWORD PTR [ebp-60], edx     // сохраняем a (high)
+
+        mov     eax, DWORD PTR [ebp+16]     // (ОТЛИЧИЕ) b: младшие 4 байта
+        mov     edx, DWORD PTR [ebp+20]     // (ОТЛИЧИЕ) b: старшие 4 байта
+        mov     DWORD PTR [ebp-72], eax     // сохраняем b (low)
+        mov     DWORD PTR [ebp-68], edx     // сохраняем b (high)
+
+        fld     QWORD PTR [ebp-72]          // (ОТЛИЧИЕ) x87: загрузили b в st(0)
+        fsub    QWORD PTR [ebp-64]          // (ОТЛИЧИЕ) st(0) = b - a
+
+        fild    DWORD PTR [ebp+24]          // (ОТЛИЧИЕ) загрузили n (int) как float в st(0) (теперь st(0)=n, st(1)=b-a)
+        fdivp   st(1), st                   // (ОТЛИЧИЕ) st(1) = (b-a)/n, pop -> на вершине остаётся h
+        fstp    QWORD PTR [ebp-32]          // сохраняем h в [ebp-32], pop FPU (после этого FPU пуст)
+
+        fldz                                // (ОТЛИЧИЕ) st(0)=0.0 (x87 "ноль")
+        fstp    QWORD PTR [ebp-16]          // sum = 0.0  (в [ebp-16])
+        mov     DWORD PTR [ebp-20], 0       // i = 0
+        jmp     .L4                         // к проверке условия i < n
+.L5:
+        fild    DWORD PTR [ebp-20]          // st(0) = (double)i
+        fmul    QWORD PTR [ebp-32]          // st(0) = i*h
+        fld     QWORD PTR [ebp-64]          // st(0)=a, st(1)=i*h
+        faddp   st(1), st                   // st(1)=a+i*h, pop -> st(0)=x_i
+        fstp    QWORD PTR [ebp-40]          // x_i -> [ebp-40]
+
+        mov     eax, DWORD PTR [ebp-20]     // eax = i
+        add     eax, 1                      // eax = i+1
+        mov     DWORD PTR [ebp-80], eax     // временно сохраняем i+1
+
+        fild    DWORD PTR [ebp-80]          // st(0) = (double)(i+1)
+        fmul    QWORD PTR [ebp-32]          // st(0) = (i+1)*h
+        fld     QWORD PTR [ebp-64]          // st(0)=a, st(1)=(i+1)*h
+        faddp   st(1), st                   // st(0)=x_{i+1}
+        fstp    QWORD PTR [ebp-48]          // x_{i+1} -> [ebp-48]
+
+        sub     esp, 8                      // (ОТЛИЧИЕ) подготовка стека для передачи double (выравнивание/слот)
+        push    DWORD PTR [ebp-36]          // (ОТЛИЧИЕ) передаём x_i как 2 dword со стека
+        push    DWORD PTR [ebp-40]
+        call    f(double)                   // f(x_i); результат в st(0)
+        add     esp, 16                     // очистка стека аргументов
+        fstp    QWORD PTR [ebp-80]          // сохраняем f(x_i) во временное [ebp-80]
+
+        sub     esp, 8                      // снова подготовка под double
+        push    DWORD PTR [ebp-44]          // передаём x_{i+1}
+        push    DWORD PTR [ebp-48]
+        call    f(double)                   // f(x_{i+1}); результат в st(0)
+        add     esp, 16
+
+        fld     QWORD PTR [ebp-80]          // загрузили f(x_i) в st(0), теперь st(1)=f(x_{i+1})
+        faddp   st(1), st                   // st(0)=f(x_i)+f(x_{i+1})
+
+        fld     QWORD PTR .LC2              // (ОТЛИЧИЕ) загрузили константу 2.0 (x87)
+        fdivp   st(1), st                   // st(0) = (f(x_i)+f(x_{i+1})) / 2
+
+        fld     QWORD PTR [ebp-16]          // st(0)=sum, st(1)=avg
+        faddp   st(1), st                   // st(0)=avg+sum
+        fstp    QWORD PTR [ebp-16]          // sum = sum + avg
+
+        add     DWORD PTR [ebp-20], 1       // i++
+.L4:
+        mov     eax, DWORD PTR [ebp+24]     // (ОТЛИЧИЕ) n берётся прямо из аргументов на стеке
+        cmp     eax, DWORD PTR [ebp-20]     // сравниваем n и i
+        jg      .L5                         // если i < n -> в тело
+
+        fld     QWORD PTR [ebp-16]          // st(0) = sum
+        fmul    QWORD PTR [ebp-32]          // st(0) = sum * h  (итог интеграла)
+        leave                               // восстановить стек/ebp
+        ret                                 // вернуть; результат в st(0)
+main:
+        lea     ecx, [esp+4]                // (ОТЛИЧИЕ) сохраняем "старый esp+4" в ecx (нужно для восстановления)
+        and     esp, -16                    // (ОТЛИЧИЕ) выравниваем стек по 16 байт (SSE/ABI требование)
+
+        push    DWORD PTR [ecx-4]           // (ОТЛИЧИЕ) возвращаем на стек то, что было "над" esp (обычно адрес возврата/служебное)
+        push    ebp                         // стандартный пролог
+        mov     ebp, esp
+        push    ecx                         // (ОТЛИЧИЕ) сохраняем ecx (нужен для восстановления esp в конце)
+        sub     esp, 36                     // место под локальные
+
+        fldz                                // (ОТЛИЧИЕ) st(0)=0.0
+        fstp    QWORD PTR [ebp-16]          // a = 0.0
+
+        fld     QWORD PTR .LC3              // (ОТЛИЧИЕ) загружаем b (тут π) в x87
+        fstp    QWORD PTR [ebp-24]          // b = .LC3
+
+        mov     DWORD PTR [ebp-28], 150000000 // n = 150000000
+
+        sub     esp, 12                     // (ОТЛИЧИЕ) подгон стека/выравнивание перед множеством push
+
+        push    DWORD PTR [ebp-28]          // push n (int)
+
+        push    DWORD PTR [ebp-20]          // (ОТЛИЧИЕ) старшие/младшие части b и a кладутся отдельно (двумя push на double)
+        push    DWORD PTR [ebp-24]          // b (low/high) — порядок как сгенерировал компилятор
+
+        push    DWORD PTR [ebp-12]
+        push    DWORD PTR [ebp-16]          // a (low/high)
+
+        call    integral(double, double, int) // аргументы взяты со стека; результат в st(0)
+        add     esp, 32                     // очищаем стек аргументов (и тот sub esp,12 учтён компоновкой)
+
+        fstp    QWORD PTR [ebp-40]          // сохраняем результат integral из st(0) в res и pop из FPU
+
+        mov     eax, 0                      // return 0
+
+        mov     ecx, DWORD PTR [ebp-4]      // (ОТЛИЧИЕ) достаём сохранённый ecx (старый указатель для восстановления стека)
+        leave                               // mov esp, ebp; pop ebp
+        lea     esp, [ecx-4]                // (ОТЛИЧИЕ) восстанавливаем esp до состояния до выравнивания
+        ret
+.LC2:
+        .long   0
+        .long   1073741824                  // (ОТЛИЧИЕ в использовании) это double 2.0, но в x86 грузится через x87: fld QWORD PTR .LC2
+
+.LC3:
+        .long   1413754136
+        .long   1074340347                  // это double π (3.141592653589793)

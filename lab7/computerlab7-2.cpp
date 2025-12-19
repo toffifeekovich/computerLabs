@@ -1,4 +1,4 @@
-#include <xmmintrin.h>
+#include <xmmintrin.h> //xmmintrin.h — SSE (базовые операции над __m128)
 #include <smmintrin.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 float** alloc_matrix(int N) {
     float **A = (float**)malloc(N * sizeof(float*));
     for (int i = 0; i < N; i++)
-        A[i] = (float*)aligned_alloc(16, N*sizeof(float));
+        A[i] = (float*)aligned_alloc(16, N*sizeof(float)); //В SSE загрузка _mm_load_ps требует, чтобы адрес был выровнен на 16 байт (alignment 16).
     return A;
 }
 
@@ -18,7 +18,7 @@ void free_matrix(float **A, int N) {
     free(A);
 }
 
-float norm_inf(float **A, int N) {
+float norm_inf(float **A, int N) {//без изменений
     float m = 0.0f;
     for (int i = 0; i < N; i++) {
         float s = 0.0f;
@@ -29,17 +29,17 @@ float norm_inf(float **A, int N) {
     return m;
 }
 
-// ===== SIMD-умножение через SSE (по 4 float за раз) =====
+//SIMD-умножение через SSE (по 4 float за раз) 
 void matmul_sse(float **C, float **A, float **B, int N) {
-    for (int i = 0; i < N; i++)
+    for (int i = 0; i < N; i++) 
         for (int j = 0; j < N; j += 4) { // по 4 столбца
-            __m128 c = _mm_setzero_ps();
+            __m128 c = _mm_setzero_ps(); //создаёт вектор [0,0,0,0] для накопления суммы.
             for (int k = 0; k < N; k++) {
-                __m128 a = _mm_set1_ps(A[i][k]);
-                __m128 b = _mm_load_ps(&B[k][j]); // B[k][j..j+3]
-                c = _mm_add_ps(c, _mm_mul_ps(a, b));
+                __m128 a = _mm_set1_ps(A[i][k]);//“размазывает” одно число A[i][k] на 4 компоненты:
+                __m128 b = _mm_load_ps(&B[k][j]); // B[k][j..j+3] загружает 4 подряд идущих float из строки B:
+                c = _mm_add_ps(c, _mm_mul_ps(a, b));//умножает поэлементно и прибавляет:
             }
-            _mm_store_ps(&C[i][j], c);
+            _mm_store_ps(&C[i][j], c);//сохраняет 4 float обратно в память (в C).
         }
 }
 
@@ -58,9 +58,8 @@ int main() {
 
     srand(0);
 
-    // ---------------------------
-    // ✔ ТАЙМЕР CHRONO — НАЧАЛО
-    // ---------------------------
+    // ТАЙМЕР CHRONO — НАЧАЛО
+
     using clock_type = std::chrono::high_resolution_clock;
     auto t0 = clock_type::now();
 
@@ -116,9 +115,8 @@ int main() {
     // 8) A^{-1} ≈ B * S   (через SIMD)
     matmul_sse(TMP, B, S, N);
 
-    // ---------------------------
-    // ✔ ТАЙМЕР CHRONO — КОНЕЦ
-    // ---------------------------
+    // ТАЙМЕР CHRONO — КОНЕЦ
+
     auto t1 = clock_type::now();
     double secs = std::chrono::duration<double>(t1 - t0).count();
 
@@ -135,3 +133,7 @@ int main() {
     free_matrix(TMP, N);
 }
 //g++ computerlab7-2.cpp -O3 -ffast-math -march=native -msse4.1 -o lab7_sse
+/*
+В наивном варианте самое дорогое — умножения матриц N×N (это O(N**3)).
+“Вариант 2 отличается тем, что матричные умножения реализованы через SSE intrinsics: считаем по 4 элемента float одновременно с __m128, поэтому самый тяжёлый кусок O(N**3) ускоряется в 4 раза.”
+*/
