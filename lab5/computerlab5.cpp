@@ -13,7 +13,6 @@ g++ computerlab5.cpp -o cam -I/usr/include/opencv4 \
 int main() {
     std::cout << "Старт программы\n";
 
-    // Попробуем такой конструктор (на Windows иногда помогает CAP_DSHOW)
     cv::VideoCapture cap(0);
     if (!cap.isOpened()) {
         std::cerr << "Ошибка: не удалось открыть камеру 0\n";
